@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0f1420">
+<title>Driver License OCR (Japan) | Name / Address / License No.</title>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<style>
+:root{--bg:#0f1420;--panel:#182032;--line:#2c3752;--ink:#eaf0fd;--dim:#98a8c6;--acc:#ffb454;--acc2:#5cc8ff;--ok:#4fd39a;--bad:#ff6f6f}
+*{box-sizing:border-box}
+body{margin:0;color:var(--ink);font-family:"Segoe UI",system-ui,"Hiragino Sans","Meiryo",sans-serif;background:var(--bg)}
+.wrap{max-width:1080px;margin:0 auto;padding:16px}
+header{padding:12px 0}
+header h1{margin:0;font-size:1.35rem}
+header .sub{color:var(--dim);font-size:.86rem;margin-top:6px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px}
+.card h2{font-size:1rem;margin:0 0 6px}
+.card h2 span{color:var(--dim);font-size:.76rem;margin-left:8px}
+.card h2 em{color:var(--acc);font-style:normal;margin-right:8px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:var(--ink);background:#243050;border:1px solid var(--line);border-radius:10px;padding:.55em .9em;font-size:.86rem}
+.btn:hover{border-color:var(--acc2)}
+.btn.big{padding:.7em 1.1em;font-size:.95rem}
+.btn.warn{border-color:var(--bad);color:var(--bad)}
+.btn.acc{border-color:var(--acc);color:var(--acc)}
+.btn.ok{border-color:var(--ok);color:var(--ok)}
+.btn.dis{opacity:.4;pointer-events:none}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:.76rem;padding:.3em .7em;border:1px solid var(--line);border-radius:8px;color:var(--dim)}
+.chip strong{color:var(--acc)}
+.chip.ok{border-color:var(--ok);color:var(--ok)}
+.chip.bad{border-color:var(--bad);color:var(--bad)}
+.chip.warn{border-color:var(--acc);color:var(--acc)}
+.stage{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.area{position:relative;width:100%;min-height:210px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#0b1019}
+.area canvas{position:absolute;inset:0;width:100%;height:100%}
+.area video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.area .note{position:absolute;left:10px;top:10px;font-size:.74rem;color:var(--acc);background:#0f1420c8;padding:.3em .6em;border-radius:6px;pointer-events:none}
+.box{position:absolute;border:1px dashed var(--acc);background:#ffb4541a;border-radius:4px;cursor:move;touch-action:none}
+.box u{position:absolute;width:18px;height:18px;margin:-9px;border:2px solid var(--acc);background:#0f1420;border-radius:4px;touch-action:none}
+.box u.topleft{left:0;top:0;cursor:nwse-resize}
+.box u.topright{right:0;top:0;cursor:nesw-resize}
+.box u.botleft{left:0;bottom:0;cursor:nesw-resize}
+.box u.botright{right:0;bottom:0;cursor:nwse-resize}
+input[type=file]{display:block;width:100%;height:2.6em;border:1px solid var(--line);border-radius:10px;background:#0b1019;color:var(--ink);cursor:pointer}
+input[type=range]{width:150px}
+input[type=range]::-webkit-slider-runnable-track{height:6px;background:#3a4a6b;border-radius:9px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;margin-top:-5px;background:var(--acc);border-radius:9px}
+.fld{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fld .slot{background:#101828;border:1px solid var(--line);border-radius:10px;padding:10px}
+.fld .slot h3{font-size:.86rem;margin:0 0 4px;color:var(--acc2)}
+.fld .slot textarea{display:block;width:100%;min-height:2.4em;background:#0b1019;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:.4em;font-size:.9rem}
+.fld .slot .meta{color:var(--dim);font-size:.7rem;margin-top:6px}
+.fld .slot .meta em{color:var(--acc);font-style:normal}
+.fld .slot .meta strong{color:var(--acc)}
+.fld .slot .meta small{color:var(--dim)}
+.fld .slot .meta span{color:var(--dim)}
+.fld .slot .meta i,.fld .slot .meta b{color:var(--acc2)}
+.log{background:#0b1019;border:1px solid var(--line);border-radius:10px;padding:10px;max-height:260px;overflow-y:auto;font-family:ui-monospace,Consolas,monospace;font-size:.74rem;color:var(--dim);white-space:pre-wrap;word-break:break-all}
+.log .t{color:var(--acc2)}
+.log .ok{color:var(--ok)}
+.log .er{color:var(--bad)}
+.log .wn{color:var(--acc)}
+.mono{font-family:ui-monospace,Consolas,monospace;font-size:.78rem}
+.hidden{display:none}
+.foot{color:var(--dim);font-size:.76rem;margin-top:18px}
+.foot .mono{font-size:.72rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+<h1>Japanese Driver License OCR</h1>
+<div class="sub">Reads <b>name</b> / <b>address</b> / <b>license number</b> from a photo of a Japanese driving license card.
+Camera or upload. Runs 100% in your browser (Tesseract.js WASM) &mdash; nothing is sent to a server.</div>
+<div class="row">
+<span class="chip">Engine: <strong>Tesseract.js v5.1.1</strong></span>
+<span class="chip">Lang: <strong>jpn + eng</strong></span>
+<span class="chip">Card: <strong>85.6 x 53.9 mm</strong></span>
+</div>
+</header>
+
+<section class="card" id="s1">
+<h2><em>1.</em> Get the image <span>camera or file</span></h2>
+<div class="row">
+<button class="btn big" id="bCam">&#128267; Take a photo</button>
+<button class="btn big" id="bFile">&#128403; Upload a file</button>
+<button class="btn big" id="bPaste">&#128203; Paste from clipboard</button>
+<button class="btn big" id="bText">&#128226; Paste text only</button>
+</div>
+<div class="row">
+<span class="chip">Camera: <strong id="camState">not opened</strong></span>
+<span class="chip">Source: <strong id="srcState">none</strong></span>
+<span class="chip">Size: <strong id="srcSize">-</strong></span>
+</div>
+<div class="row"><input type="file" id="pick" accept="image/*" class="btn"></div>
+<div class="area" id="view"><div class="note" id="note">No image yet.</div></div>
+</section>
+
+<section class="card" id="s2">
+<h2><em>2.</em> Adjust the image <span>crop / rotate / enhance</span></h2>
+<div class="row">
+<button class="btn" id="bRotL">&#8634; rotate left</button>
+<button class="btn" id="bRotR">&#8635; rotate right</button>
+<button class="btn" id="bFlip">&#8596; mirror</button>
+<button class="btn" id="bReset">&#8634; reset all</button>
+<button class="btn" id="bAuto">&#9889; auto enhance</button>
+<button class="btn" id="bFull">&#10074;&#10074; full frame</button>
+</div>
+<div class="row">
+<label class="btn">crop box <span class="chip">drag the box / corners</span></label>
+<span class="chip">zoom <input type="range" id="zoom" min="1" max="4" step="0.1" value="1.6"></span>
+<span class="chip">contrast <input type="range" id="con" min="-80" max="80" step="1" value="0"></span>
+<span class="chip">brightness <input type="range" id="bri" min="-80" max="80" step="1" value="0"></span>
+<span class="chip">threshold <input type="range" id="thr" min="0" max="255" step="1" value="128"></span>
+</div>
+<div class="row">
+<button class="btn" id="bGray">grayscale: <b id="gGray">on</b></button>
+<button class="btn" id="bSharp">sharpen: <b id="gSharp">on</b></button>
+<button class="btn" id="bBin">binarize: <b id="gBin">off</b></button>
+<button class="btn" id="bInv">invert: <b id="gInv">off</b></button>
+<button class="btn" id="bDeskew">deskew: <b id="gDeskew">off</b></button>
+</div>
+</section>
+
+<section class="card" id="s3">
+<h2><em>3.</em> Run OCR <span>jpn+eng, up to 3 passes</span></h2>
+<div class="row">
+<button class="btn big ok" id="bRun">&#9654; Run OCR</button>
+<button class="btn big acc" id="bStop">&#9632; Stop</button>
+<button class="btn" id="bLang">Language: <b id="gLang">jpn+eng</b></button>
+<button class="btn" id="bPsm">Page mode: <b id="gPsm">6</b></button>
+<button class="btn" id="bWhitelist">Whitelist: <b id="gWhite">off</b></button>
+<button class="btn" id="bPass">Passes: <b id="gPass">3</b></button>
+</div>
+<div class="row">
+<span class="chip">Model: <strong id="ModelState">loading&hellip;</strong></span>
+<span class="chip">Pass: <strong id="passState">-</strong></span>
+<span class="chip">Progress: <strong id="progState">0%</strong></span>
+<span class="chip">Elapsed: <strong id="elapsedState">0.0s</strong></span>
+<span class="chip">Words: <strong id="wordState">0</strong></span>
+<span class="chip">Confidence: <strong id="confState">-</strong></span>
+<span class="chip">Best pass: <strong id="bestState">-</strong></span>
+</div>
+<div class="row">
+<button class="btn" id="bCancel">&#10006; cancel run</button>
+<button class="btn" id="bRetry">&#8635; retry failed pass</button>
+<button class="btn" id="bLog">&#128218; show log</button>
+</div>
+<div class="log" id="log"></div>
+</section>
+
+<section class="card" id="s4">
+<h2><em>4.</em> Results <span>click a box to edit it</span></h2>
+<div class="fld">
+<div class="slot"><h3>Name</h3><textarea id="v_name" class="btn" spellcheck="false"></textarea><div class="meta">confidence <em id="c_name">-</em> &middot; source <em id="s_name">-</em></div></div>
+<div class="slot"><h3>Address</h3><textarea id="v_addr" class="btn" spellcheck="false"></textarea><div class="meta">confidence <em id="c_addr">-</em> &middot; source <em id="s_addr">-</em></div></div>
+<div class="slot"><h3>License number</h3><textarea id="v_num" class="btn" spellcheck="false"></textarea><div class="meta">confidence <em id="c_num">-</em> &middot; source <em id="s_num">-</em></div></div>
+<div class="slot"><h3>Other fields</h3><textarea id="v_other" class="btn" spellcheck="false"></textarea><div class="meta">dob / expiry / blood type / height &middot; <em id="c_other">-</em></div></div>
+<div class="slot"><h3>Raw OCR text</h3><textarea id="v_raw" class="btn" spellcheck="false"></textarea><div class="meta">line order <em id="s_raw">-</em></div></div>
+<div class="slot"><h3>Corrections</h3><textarea id="v_fix" class="btn" spellcheck="false"></textarea><div class="meta">auto glyph fixes applied <em id="c_fix">-</em></div></div>
+</div>
+<div class="row">
+<button class="btn big" id="bCopy">&#128203; copy all</button>
+<button class="btn" id="bJson">&#128202; copy JSON</button>
+<button class="btn" id="bCsv">&#128204; copy CSV</button>
+<button class="btn" id="bEdit">&#9998; edit fields</button>
+<button class="btn" id="bClear">&#128445; clear results</button>
+<button class="btn" id="bAgain">&#8635; run again</button>
+</div>
+<div class="row">
+<span class="chip">Name: <strong id="st_name">-</strong></span>
+<span class="chip">Address: <strong id="st_addr">-</strong></span>
+<span class="chip">Number: <strong id="st_num">-</strong></span>
+<span class="chip">Warnings: <strong id="st_warn">0</strong></span>
+</div>
+</section>
+
+<div class="foot">
+Privacy: images never leave this page. Accuracy note: Japanese cards use kana + mixed scripts;
+OCR is best-effort &mdash; always check the card. Not affiliated with any government or authority.
+<span class="mono" id="build">build: tesseract.js 5.1.1 / jpn+eng / WASM</span>
+</div>
+
+</div>
+
+<script>
+var $=function(s){var e=document.getElementById(s);return e||document.createElement('div')};
+var S={};
+S.lang='jpn+eng'; S.psm=6; S.white=''; S.passes=3;
+S.gray=1; S.sharp=1; S.bin=0; S.inv=0; S.deskew=0;
+S.zoom=1.6; S.con=0; S.bri=0; S.thr=128;
+S.rot=0; S.flip=0;
+S.crop=null;
+S.src=null; S.srcKind=''; S.base=null;
+S.worker=null; S.model='idle';
+S.busy=false; S.cancel=false; S.stop=false;
+S.raw=''; S.words=[]; S.lines=[]; S.res={}; S.meta={}; S.best='';
+S.log=[]; S.t0=0;
+function log(m,k){var t=new Date().toTimeString().slice(0,8);S.log.push(t+' '+m);
+while(S.log.length>400)S.log.shift();
+var el=$('log');el.textContent=S.log.join('\n');
+if(k)console[k]('[license-ocr] '+m)}
+function chip(id,v){var e=$(id);if(e)e.textContent=v}
+function setBtn(id,on){var e=$(id);if(e)e.textContent=on?'on':'off'}
+function btn(id){var e=document.getElementById(id);return e}
+function bind(id,fn){var e=document.getElementById(id);if(e)e.addEventListener('click',fn)}
+function num(id,d){var e=document.getElementById(id);return e?parseFloat(e.value)||d:d}
+async function initWorker(){
+if(S.worker)return S.worker;
+if(typeof Tesseract==='undefined'||!Tesseract.createWorker){S.model='no engine';chip('ModelState','engine missing');log('tesseract.js CDN failed to load','error');return null}
+chip('ModelState','loading model');log('creating worker (lang='+S.lang+')');
+var w=await Tesseract.createWorker(S.lang,1,function(m){
+if(m&&m.progress>=1)S.model='ready';
+if(m&&m.progress!=null)chip('progState',Math.round(m.progress*100)+'%');
+if(m&&m.messages)chip('passState',String(m.messages))});
+S.worker=w;S.model='ready';chip('ModelState','ready');log('worker ready');return w}
+function setSrc(img,kind){
+S.src=img;S.srcKind=kind;
+chip('srcState',kind);chip('srcSize',img.width+' x '+img.height);
+log('source set: '+kind+' ('+img.width+'x'+img.height+')');
+S.crop=null;S.rot=0;S.flip=0;S.base=null;paint()}
+function fromFile(f){
+if(!f||!f.files)return;
+var it=f.files[0];if(!it)return;
+if(it.type&&it.type.indexOf('image')<0){log('not an image: '+it.type,'warn');return}
+var i=new Image();
+i.onload=function(){setSrc(i,'file: '+it.name)};
+i.onerror=function(){log('image decode failed','warn')};
+i.src=URL.createObjectURL(it)}
+function fromPaste(){
+log('paste requested');
+var ta=$('v_raw');
+if(ta&&ta.value&&ta.value!==S.raw){setText(ta.value);return}
+log('browsers cannot read images from the clipboard: use Upload a file, or drag the image file into this window','warn')}
+function setText(t){
+S.raw=t||'';chip('srcState','text only');chip('srcSize','-');
+analyze();show()}
+var cam=null,stream=null,shot=null;
+async function openCam(){
+chip('camState','requesting');log('camera requested');
+try{
+if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){chip('camState','unsupported');log('getUserMedia not available','warn');return}
+stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1920},height:{ideal:1080}},audio:false});
+}catch(e){chip('camState','denied');log('camera failed: '+(e&&e.message?e.message:e),'warn');return}
+cam=document.createElement('video');cam.srcObject=stream;cam.play();cam.setAttribute('playsinline','');
+var v=$('view');v.insertBefore(cam,v.firstChild);
+chip('camState','open');log('camera open');
+$('note').textContent='Drag the dashed box onto the card, then press Capture.'}
+async function snap(){
+if(!cam){await openCam();if(!cam)return}
+var w=cam.videoWidth||1280,h=cam.videoHeight||720;
+shot=document.createElement('canvas');shot.width=w;shot.height=h;
+shot.getContext('2d').drawImage(cam,0,0,w,h);
+setSrc(shot,'camera frame')}
+var view=null,layer=null,boxEl=null;
+function paint(){
+view=$('view');
+if(!S.src){$('note').textContent='No image yet.';return}
+var iw=S.src.width,ih=S.src.height;
+var maxW=Math.min(980,view.clientWidth||980);
+var sc=Math.min(1,maxW/iw);
+var w=Math.max(40,Math.round(iw*sc)),h=Math.max(40,Math.round(ih*sc));
+view.style.width=w+'px';view.style.height=h+'px';
+if(!layer||layer.parentNode!==view){layer=document.createElement('canvas');view.insertBefore(layer,view.firstChild)}
+layer.width=w;layer.height=h;
+process();
+if(S.base)layer.getContext('2d').drawImage(S.base,0,0,w,h);
+if(!boxEl){boxEl=document.createElement('div');boxEl.className='box';view.appendChild(boxEl)}
+var cx=S.crop?S.crop.x:0.08,cy=S.crop?S.crop.y:0.10,cw=S.crop?S.crop.w:0.84,chh=S.crop?S.crop.h:0.72;
+boxEl.style.left=Math.round(cx*w)+'px';boxEl.style.top=Math.round(cy*h)+'px';
+boxEl.style.width=Math.round(cw*w)+'px';boxEl.style.height=Math.round(chh*h)+'px';
+if(!boxEl.children.length){var q=['topleft','topright','botleft','botright'];
+for(var i=0;i<4;i++){var u=document.createElement('u');u.className='u '+q[i];boxEl.appendChild(u)}}
+$('note').textContent='Box = area to OCR. Drag box or corners.'}
+function process(){
+var src=S.src;if(!src)return;
+var iw=src.width,ih=src.height;
+var c=S.crop||{x:0,y:0,w:1,h:1};
+var sx=Math.round(c.x*iw),sy=Math.round(c.y*ih);
+var sw=Math.max(8,Math.round(c.w*iw)),sh=Math.max(8,Math.round(c.h*ih));
+var tmp=document.createElement('canvas');tmp.width=sw;tmp.height=sh;
+tmp.getContext('2d').drawImage(src,-sx,-sy);
+var rot=((S.rot%360)+360)%360;
+var out=document.createElement('canvas');
+var g=rot===90||rot===270;
+out.width=g?sh:sw;out.height=g?sw:sh;
+var x=out.getContext('2d');
+x.save();x.translate(out.width/2,out.height/2);
+x.scale(S.flip?-1:1,1);x.rotate(rot*Math.PI/180);
+x.drawImage(tmp,-sw/2,-sh/2);x.restore();
+enhance(out);
+S.base=out}
+function enhance(cv){
+var g=cv.getContext('2d'),d=g.getImageData(0,0,cv.width,cv.height),a=d.data;
+var i,n=a.length/4;
+if(S.inv){for(i=0;i<a.length;i+=4){a[i]=255-a[i];a[i+1]=255-a[i+1];a[i+2]=255-a[i+2]}}
+if(S.gray){for(i=0;i<a.length;i+=4){var v=(a[i]*299+a[i+1]*587+a[i+2]*114)/1000;a[i]=a[i+1]=a[i+2]=v}}
+if(S.con){var f=(255+S.con)/(255-S.con);for(i=0;i<a.length;i+=4){a[i]=clamp(f*(a[i]-128)+128);a[i+1]=clamp(f*(a[i+1]-128)+128);a[i+2]=clamp(f*(a[i+2]-128)+128)}}
+if(S.bri){for(i=0;i<a.length;i+=4){a[i]=clamp(a[i]+S.bri);a[i+1]=clamp(a[i+1]+S.bri);a[i+2]=clamp(a[i+2]+S.bri)}}
+if(S.bin){for(i=0;i<a.length;i+=4){var t=(a[i]+a[i+1]+a[i+2])/3>S.thr?255:0;a[i]=a[i+1]=a[i+2]=t}}
+g.putImageData(d,0,0);return a}
+function clamp(v){return v<0?0:v>255?255:v}
+function upscale(cv,f){
+var o=document.createElement('canvas');o.width=Math.round(cv.width*f);o.height=Math.round(cv.height*f);
+var g=o.getContext('2d');g.imageSmoothingEnabled=true;g.drawImage(cv,0,0,o.width,o.height);return o}
+function sharpen(cv){
+var g=cv.getContext('2d'),d=g.getImageData(0,0,cv.width,cv.height),a=d.data;
+var w=cv.width,h=cv.height,c=a.length,out=new Uint8Array(c);
+var k=[0,-1,0,-1,5,-1,0,-1,0],x,y,i,j,s,ox,oy,oi;
+for(y=0;y<h;y++)for(x=0;x<w;x++){i=(y*w+x)*4;
+if(y===0||x===0||y===h-1||x===w-1){out[i]=a[i];out[i+1]=a[i+1];out[i+2]=a[i+2];out[i+3]=a[i+3];continue}
+for(j=0;j<3;j++){s=0;
+for(oy=-1;oy<2;oy++)for(ox=-1;ox<2;ox++)s+=a[i+(oy*w+ox)*4+j]*k[(oy+1)*3+ox+1];
+out[i+j]=clamp(s)}out[i+3]=a[i+3]}
+for(i=0;i<c;i++)a[i]=out[i];g.putImageData(d,0,0);return cv}
+function estimateSkew(){
+if(!S.words||S.words.length<4)return 0;
+var n=0,sx=0,sy=0,sxy=0,sxx=0,i,w;
+for(i=0;i<S.words.length;i++){w=S.words[i];if(!w||!w.bbox)continue;
+var xw=w.bbox.left,ys=w.bbox.top;
+n++;sx+=xw;sy+=ys;sxy+=xw*ys;sxx+=xw*xw}
+if(n<4)return 0;
+var den=n*sxx-sx*sx;
+if(Math.abs(den)<1)return 0;
+var m=(n*sxy-sx*sy)/den;
+var deg=Math.atan(m)*180/Math.PI;
+if(deg>15||deg<-15)return 0;
+return deg}
+async function runOcr(){
+if(S.busy){log('already running - use cancel','warn');return}
+if(!S.src){log('no image: take a photo or upload a file first','warn');return}
+S.busy=true;S.cancel=false;S.stop=false;S.t0=Date.now();
+chip('progState','0%');chip('elapsedState','0.0s');
+sync();
+var w=await initWorker();
+if(!w){S.busy=false;return}
+try{if(w.setOptions){await w.setOptions({keep_whitespace:true});
+await w.setOptions({tessedit_pageseg_mode:S.psm});
+if(S.white)await w.setOptions({charset_whitelist:S.white})}}catch(e0){log('setOptions not supported in this build','warn')}
+process();
+if(!S.base){S.busy=false;return}
+var cv=S.base;
+if(S.sharp)cv=sharpen(cv);
+var z=S.zoom;
+if(z>1.01)cv=upscale(cv,z);
+var passes=S.passes,bi=0,best=-1;
+var variants=[cv];
+if(!S.bin)variants.push(upscale(cv,1.4));
+if(passes>variants.length)variants.push(upscale(cv,2.2));
+while(variants.length>passes)variants.pop();
+log('run: psm='+S.psm+' zoom='+z+' passes='+variants.length);
+for(var p=0;p<variants.length;p++){
+if(S.cancel||S.stop){log('run stopped by user','warn');break}
+chip('passState',(p+1)+'/'+variants.length);
+var img=variants[p];
+if(p>0&&S.deskew){var sk=estimateSkew();
+if(Math.abs(sk)>0.4){S.rot=Math.round(S.rot+sk);process();
+if(S.base){img=upscale(S.base,S.zoom);if(S.sharp)img=sharpen(img);log('deskew: '+sk.toFixed(1)+' deg applied')}}}
+var r=await w.recognize(img);
+var D=r&&r.data?r.data:null;
+var txt=D&&D.text?D.text:'';
+var conf=D&&D.mean_confidence!=null?D.mean_confidence:-1;
+var len=txt.replace(/\s+/g,'').length;
+var sc=len+conf*0.02*len;
+var nw=D&&D.words?D.words.length:0;
+log('pass '+(p+1)+': words='+nw+' conf='+conf.toFixed(1)+' chars='+len);
+if(sc>best){best=sc;bi=p;S.raw=txt;S.words=D&&D.words?D.words:[];S.best='pass '+(p+1)}
+chip('confState',conf.toFixed(1));chip('wordState',String(S.words.length));
+chip('bestState','pass '+(bi+1));
+chip('progState',Math.round((p+1)/variants.length*100)+'%');
+chip('elapsedState',((Date.now()-S.t0)/1000).toFixed(1)+'s')}
+S.busy=false;analyze();show()}
+function analyze(){
+S.lines=[];
+if(!S.raw){show();return}
+var ws=S.words,i,w,l;
+for(i=0;i<ws.length;i++){w=ws[i];
+if(!w||!w.bbox)continue;
+l=null;
+if(S.lines.length)l=S.lines[S.lines.length-1];
+if(!l||Math.abs(l.y-w.bbox.top)>Math.max(10,w.bbox.height*0.6)){l={y:w.bbox.top,words:[]};S.lines.push(l)}
+l.words.push(w)}
+S.lines.sort(function(a,b){return a.y-b.y});
+var raw=S.raw.replace(/\r/g,'').split('\n');
+S.res={};S.meta={};
+var all=raw.join(' ');
+function grab(re,skip){
+var i,m;
+for(i=0;i<raw.length;i++){
+if(skip&&skip.indexOf(i)>=0)continue;
+m=re.exec(raw[i]);if(m){S.gi=i;return m[0]}}
+m=re.exec(all);if(m){S.gi=-1;return m[0]}return ''}
+var nre1=/[\u3041-\u30FF\u4E00-\u9FFF\s\-'.]*\u30ED[\u3041-\u30FF\s\-'.]*/;
+var nre2=/[\u3041-\u30FF\u4E00-\u9FFF][\u3041-\u30FF\u4E00-\u9FFF\s\-'.]{1,40}/;
+var are1=/[\u3041-\u30FF\u4E00-\u9FFF\s\-'.]*\u30C1[\u3041-\u30FF\s\-'.]*/;
+var are2=/[\u3041-\u30FF\u4E00-\u9FFF][\u3041-\u30FF\u4E00-\u9FFF\s\-'.]{1,60}/;
+var nm=grab(nre1),gi=S.gi;
+if(!nm){nm=grab(nre2);gi=S.gi}
+var ad=grab(are1,[gi]);
+if(!ad)ad=grab(are2,[gi]);
+var nb=grab(/[A-Z]{2,3}[\s-]?[0-9]{3,4}[\s-]?[A-Z]{1,2}/);
+if(!nb)nb=grab(/[A-Z]{2,3}[\s-]?[0-9]{3,4}/);
+if(!nb)nb=grab(/[\u30A1-\u30FF][\s-]?[0-9]{3,4}/);
+if(!nb)nb=grab(/[A-Z]{1,3}[\s-]?[0-9]{4,6}[\s-]?[A-Z]{0,2}/);
+S.res.name=clean(nm);S.res.addr=clean(ad);S.res.num=clean(nb);
+S.meta.name=score(nm);S.meta.addr=score(ad);S.meta.num=score(nb);
+S.other=otherFields(all);
+S.fixes=fixReport();
+show()}
+function clean(s){return (s||'').replace(/\s+/g,' ').trim()}
+function score(s){var n=(s||'').replace(/\s+/g,'').length;return n?Math.min(99,40+n*4):0}
+var FIX=[['O','0'],['o','0'],['I','1'],['l','1'],['|','1'],['L','1'],['S','5'],['B','8'],['Z','2'],['z','2'],['G','6'],['q','9'],['U','V']];
+function fixReport(){
+var out=[],i,s=S.res.num||'',t=(s||'').replace(/[\s\-\/.]/g,'');
+if(t&&!new RegExp('^(?:[A-Z]{1,3}|[\\u30A0-\\u30FF])[0-9]{3,4}[A-Z]{0,2}$').test(t)){
+out.push('number shape mismatch');
+for(i=0;i<FIX.length;i++)if(s.indexOf(FIX[i][0])>=0)out.push(FIX[i][0]+'>'+FIX[i][1])}
+var n2=S.res.name||'';
+if(!n2)out.push('name not found');
+else if(!new RegExp('[\\u3041-\\u30FF\\u4E00-\\u9FFF]').test(n2))out.push('name has no kana');
+var a2=S.res.addr||'';
+if(!a2)out.push('address not found');
+else if(a2.indexOf('\u30C1')<0)out.push('address marker (no) not found');
+return out}
+function otherFields(t){
+var o=[],m;
+var D='[0-9]{2,4}[\\/.\\uFF0F][0-9]{1,2}[\\/.\\uFF0F][0-9]{2,4}';
+var C='[\\u3041-\\u30FF\\u3000-\\u303F\\u4E00-\\u9FFF\\uFF01-\\uFF60\\u3010-\\u301F]';
+m=new RegExp('(^|[^0-9\\/.])('+D+')(?=[^0-9\\/.]|$)').exec(t);
+if(m)o.push('date: '+m[2]);
+m=new RegExp('([A-H])\\s*('+C+')').exec(t);
+if(m)o.push('letter+marker: '+m[1]+' '+m[2]);
+m=new RegExp('([0-9]{3})\\s*('+C+')').exec(t);
+if(m)o.push('number+marker: '+m[1]+' '+m[2]);
+return o.join('\n')}
+function show(){
+var r=S.res||{};
+$('v_name').value=r.name||'';
+$('v_addr').value=r.addr||'';
+$('v_num').value=r.num||'';
+$('v_other').value=(S.other||'');
+$('v_raw').value=S.raw||'';
+$('v_fix').value=(S.fixes||[]).join('\n');
+chip('c_name',String((S.meta||{}).name||0));
+chip('c_addr',String((S.meta||{}).addr||0));
+chip('c_num',String((S.meta||{}).num||0));
+chip('s_name',S.best||'-');chip('s_addr',S.best||'-');chip('s_num',S.best||'-');
+chip('s_raw',String(S.lines.length)+' lines');
+chip('c_fix',String((S.fixes||[]).length));
+chip('st_name',r.name?'ok':'missing');
+chip('st_addr',r.addr?'ok':'missing');
+chip('st_num',r.num?'ok':'missing');
+chip('st_warn',String((S.fixes||[]).length));
+chip('c_other',String((S.other||'').split('\n').filter(function(x){return x.length>0}).length))}
+function copyAll(){
+var r=S.res||{};
+var t='Name: '+(r.name||'')+'\nAddress: '+(r.addr||'')+'\nNumber: '+(r.num||'')+'\n'+(S.other||'');
+return t}
+function asJson(){
+var r=S.res||{};
+return JSON.stringify({name:r.name||'',address:r.addr||'',number:r.num||'',other:(S.other||'').split('\n'),raw:S.raw||'',lines:S.lines.length,fixes:S.fixes||[]},1)}
+function asCsv(){
+var r=S.res||{};
+function q(s){return '"'+String(s||'').replace(/"/g,'""')+'"'}
+return 'field,value\nname,'+q(r.name)+'\naddress,'+q(r.addr)+'\nnumber,'+q(r.num)+'\nraw,'+q(S.raw)}
+function doCopy(t){
+try{navigator.clipboard.writeText(t);log('copied to clipboard')}
+catch(e){var ta=$('v_raw');ta.value=t;log('clipboard blocked - text is in the raw box','warn')}}
+function toggle(id,key){var e=btn(id);if(!e)return;S[key]=S[key]?0:1;setBtn(id,S[key]);paint()}
+function act(id,fn){bind(id,fn)}
+act('bCam',function(){snap()});
+act('bPaste',function(){fromPaste()});
+act('bText',function(){setText($('v_raw').value)});
+act('bRotL',function(){S.rot=(S.rot+270)%360;paint()});
+act('bRotR',function(){S.rot=(S.rot+90)%360;paint()});
+act('bFlip',function(){S.flip=S.flip?0:1;paint()});
+act('bReset',function(){S.rot=0;S.flip=0;S.crop=null;S.zoom=1.6;S.con=0;S.bri=0;S.thr=128;S.bin=0;S.inv=0;S.deskew=0;paint()});
+act('bAuto',function(){S.gray=1;S.sharp=1;S.con=18;S.bri=6;S.zoom=2;S.bin=0;paint()});
+act('bFull',function(){S.crop=null;paint()});
+act('bGray',function(){toggle('bGray','gray')});
+act('bSharp',function(){toggle('bSharp','sharp')});
+act('bBin',function(){toggle('bBin','bin')});
+act('bInv',function(){toggle('bInv','inv')});
+act('bDeskew',function(){toggle('bDeskew','deskew')});
+act('bRun',function(){runOcr()});
+act('bAgain',function(){runOcr()});
+act('bRetry',function(){runOcr()});
+act('bStop',function(){S.stop=true;log('stop requested','warn')});
+act('bCancel',function(){S.cancel=true;log('cancel requested','warn')});
+act('bCopy',function(){doCopy(copyAll())});
+act('bJson',function(){doCopy(asJson())});
+act('bCsv',function(){doCopy(asCsv())});
+act('bClear',function(){S.res={};S.meta={};S.raw='';S.words=[];S.lines=[];S.other='';S.fixes=[];S.best='';show()});
+act('bEdit',function(){var t=$('v_name');t.focus()});
+act('bFile',function(){var e=btn('pick');if(e){e.focus();log('choose a file in the input box above the preview')}});
+function sync(){S.zoom=num('zoom',1.6);S.con=num('con',0);S.bri=num('bri',0);S.thr=num('thr',128)}
+function pickChange(f){fromFile(f)}
+(function(){var e=btn('pick');if(e)e.addEventListener('change',pickChange)})();
+function clampN(v,a,b){return v<a?a:v>b?b:v}
+var dragState=null;
+function drag(){
+var v=$('view');
+v.addEventListener('pointerdown',function(ev){
+if(!boxEl)return;
+var t=ev.target;
+if(t!==boxEl&&!boxEl.contains(t))return;
+var corner='';
+if(t!==boxEl&&t.className)corner=t.className.replace('u ','');
+dragState={x0:ev.clientX,y0:ev.clientY,c:{x:S.crop?S.crop.x:0.08,y:S.crop?S.crop.y:0.10,w:S.crop?S.crop.w:0.84,h:S.crop?S.crop.h:0.72},corner:corner,W:v.clientWidth||1,H:v.clientHeight||1}});
+v.addEventListener('pointermove',function(ev){
+if(!dragState)return;
+var d=dragState,c=d.c,W=d.W,H=d.H;
+var dx=(ev.clientX-d.x0)/W,dy=(ev.clientY-d.y0)/H;
+var x=c.x,y=c.y,w=c.w,h=c.h;
+if(d.corner==='botright'){w=c.w+dx;h=c.h+dy}
+else if(d.corner==='botleft'){x=c.x+dx;w=c.w-dx;h=c.h+dy}
+else if(d.corner==='topright'){y=c.y+dy;h=c.h-dy;w=c.w+dx}
+else if(d.corner==='topleft'){x=c.x+dx;y=c.y+dy;w=c.w-dx;h=c.h-dy}
+else{x=c.x+dx;y=c.y+dy}
+w=clampN(w,.05,1);h=clampN(h,.05,1);
+x=clampN(x,0,1-w);y=clampN(y,0,1-h);
+S.crop={x:x,y:y,w:w,h:h};paint()});
+v.addEventListener('pointerup',function(){dragState=null});
+v.addEventListener('pointerleave',function(){dragState=null})}
+drag();
+function ctl(){
+var e=btn('bLang');if(e)e.addEventListener('click',function(){S.lang=S.lang==='jpn+eng'?'jpn':'jpn+eng';chip('gLang',S.lang);if(S.worker){try{S.worker.terminate()}catch(x){}S.worker=null;S.model='idle';chip('ModelState','reload on next run')}});
+e=btn('bPsm');if(e)e.addEventListener('click',function(){S.psm=S.psm===6?7:6;chip('gPsm',String(S.psm))});
+e=btn('bWhitelist');if(e)e.addEventListener('click',function(){S.white=S.white?'':'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';chip('gWhite',S.white?'on':'off')});
+e=btn('bPass');if(e)e.addEventListener('click',function(){S.passes=S.passes>=3?1:S.passes+1;chip('gPass',String(S.passes))});
+e=btn('bLog');if(e)e.addEventListener('click',function(){var l=$('log');if(!l.textContent)l.textContent=S.log.join('\n')})}
+ctl();
+function init(){
+sync();paint();
+log('ready: press Take a photo or Upload a file, then Run OCR');
+if(typeof Tesseract==='undefined'){log('engine not loaded yet (CDN may still be loading)','warn')}}
+init();
+</script>
+</body>
+</html>
